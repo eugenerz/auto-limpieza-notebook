@@ -26,4 +26,4 @@ jobs:
       - name: Ejecutar notebook
         run: |
           pip install papermill
-          papermill limpieza_forms.ipynb salida.ipynb
+          papermill Zocalito_Formato_de_Limpieza.ipynb salida.ipynb
