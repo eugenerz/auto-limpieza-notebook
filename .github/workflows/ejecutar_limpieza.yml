@@ -12,7 +12,10 @@ jobs:
     steps:
       - name: Clonar repo
         uses: actions/checkout@v3
-
+        
+      - name: Mostrar hora de inicio
+        run: echo "Inicio de ejecución: $(date)"
+        
       - name: Configurar Python
         uses: actions/setup-python@v4
         with:
@@ -26,7 +29,9 @@ jobs:
       - name: Registrar kernel Python
       - run: python -m ipykernel install --user --name python3
           
-
       - name: Ejecutar notebook
         run: |
           papermill ADIP_Formato_de_Limpieza.ipynb salida.ipynb
+          
+      - name: Mostrar hora de finalización
+        run: echo "Fin de ejecución: $(date)"
