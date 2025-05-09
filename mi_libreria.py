@@ -49,11 +49,11 @@ def extraer_antes_del_punto(texto):
        """
   texto = str(texto)
 
-  match = re.search(r'(\S*)\.', texto)  # Search for non-space characters before a period
-  if match:
-    return match.group(1)  # Return the matched group (before the period)
-  else:
-    return texto  # Return the original string if no match is found
+  if texto and not pd.isnull(texto) and texto != 'nan':  # Verifica si el texto no es nulo, NaN ni 'nan'
+      match = re.search(r'([^.]*)\.', texto)
+      if match:
+          return match.group(1)
+  return texto  # Devuelve el texto original si es nulo, NaN o no hay coincidencia
 
 
 def replace_values(df, column, dict1):
@@ -84,6 +84,7 @@ def extraer_headers(base): ## con "." como delimitador
   # Split the 'Header' column into two, filling with None if there's no '.'
   base_headers[['Codigo','Pregunta']] = base_headers['Header'].str.split(".",n=1,expand=True).reindex(columns=[0, 1]).fillna('')
   base_headers['Subcodigo']=base_headers['Header'].str.extract(r'\[(.*?)\.')
+  base_headers.loc[base_headers['Subcodigo'].notna(), 'Subcodigo'] = base_headers.loc[base_headers['Subcodigo'].notna(), 'Codigo'] + "_" + base_headers.loc[base_headers['Subcodigo'].notna(), 'Subcodigo'].astype(str)
   base_headers.loc[base_headers["Subcodigo"].notna(), "Codigo"] = base_headers.loc[base_headers["Subcodigo"].notna(), "Subcodigo"]
 
   return base_headers[['Codigo','Pregunta','Subcodigo']]
@@ -183,7 +184,7 @@ def reordenar_menciones(df, bloque,ns):
     Retorna:
     pd.DataFrame: DataFrame con el bloque de menciones ordenado.
     """
-    ns=ns.astype(str)
+    #ns=ns.astype(str)
 
     def reordenar_fila(row):
         # Convertimos todo a string y eliminamos espacios en blanco
@@ -240,5 +241,74 @@ def validar_ids_unicos(df, columna="ID_registro"):
         )
     else:
         print(f"✅ Todos los valores en la columna '{columna}' son únicos.")
+
+
+def registrar_ejecucion(sheet_id, estado, mensaje="", sheet_name="Ejecuciones", gc=None, datetime=None,pytz=None):
+    """
+    Registra la ejecución de un flujo ETL en una hoja de Google Sheets.
+
+    Args:
+        sheet_id (str): ID del documento de Google Sheets.
+        estado (str): Estado del flujo, ej. "Éxito" o "Error".
+        mensaje (str): Mensaje opcional con detalles del estado.
+        sheet_name (str): Nombre de la hoja donde registrar.
+        gc (gspread.Client): Cliente autenticado de gspread.
+        datetime: Módulo para trabajar con fechas y horas.
+        pytz: Módulo para trabajar con zonas horarias.
+
+    Returns:
+        None
+    """
+    mexico_city_tz = pytz.timezone('America/Mexico_City')
+
+    # Get current time in Mexico City
+    now = datetime.now(mexico_city_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+    df_log = pd.DataFrame([{
+        "timestamp": now,
+        "estado": estado,
+        "mensaje": mensaje
+    }])
+
+    try:
+        sh = gc.open_by_key(sheet_id)
+    except gspread.exceptions.SpreadsheetNotFound:
+        sh = gc.create(sheet_name)
+        print(f"Nuevo archivo creado: '{sheet_name}'")
+        sheet_id = sh.id
+
+    # Obtener o crear hoja
+    try:
+        ws = sh.worksheet(sheet_name)
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet(title=sheet_name, rows="1000", cols="10")
+        set_with_dataframe(ws, df_log)
+        print(f"Registro de ejecución creado en nueva hoja '{sheet_name}'")
+        return
+
+    # Obtener datos existentes
+    existing_data = ws.get_all_values()
+    start_row = len(existing_data) + 1
+    include_headers = start_row == 1
+
+    set_with_dataframe(ws, df_log, row=start_row, include_column_header=include_headers)
+    print(f"Registro agregado en fila {start_row}")
+
+
+def obtener_nuevos_registros(df_nueva, df_limpia, columna_id='ID_registro'):
+    """
+    Filtra los registros nuevos que no están en la base limpia.
+
+    Parámetros:
+        df_nueva (pd.DataFrame): DataFrame con la base actualizada.
+        df_limpia (pd.DataFrame): DataFrame con la base ya limpia.
+        columna_id (str): Nombre de la columna de ID único.
+
+    Retorna:
+        pd.DataFrame: Subconjunto de df_nueva con solo los registros nuevos.
+    """
+    ids_limpios = set(df_limpia[columna_id])
+    nuevos_registros = df_nueva[~df_nueva[columna_id].isin(ids_limpios)].copy()
+    return nuevos_registros
 
 
